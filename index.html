@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ระบบลงเวลาคนขับรถส่งของ</title>
-  <!-- LINE LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -61,7 +60,7 @@
       font-size: 15px;
     }
     input:focus, select:focus { border-color: #38bdf8; }
-    button, .btn-cam-label {
+    button {
       width: 100%;
       padding: 14px;
       margin-top: 16px;
@@ -73,30 +72,41 @@
       background: linear-gradient(135deg, #2563eb, #1d4ed8);
       color: #fff;
       display: block;
-      text-align: center;
-      text-decoration: none;
       box-sizing: border-box;
     }
-    .btn-cam-label {
+    .btn-cam {
       background: #0284c7 !important;
-      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
       margin-top: 12px;
     }
     button:disabled { background: #334155 !important; color: #64748b !important; cursor: not-allowed; }
-    .preview-box {
+    .camera-container {
       width: 100%;
       margin-top: 12px;
-      border-radius: 10px;
-      background: #0f172a;
-      min-height: 180px;
+      border-radius: 12px;
+      background: #000;
+      min-height: 240px;
+      height: 260px;
       display: flex;
       align-items: center;
       justify-content: center;
       overflow: hidden;
-      border: 2px dashed #475569;
+      border: 2px solid #334155;
+      position: relative;
     }
-    .preview-box img { width: 100%; max-height: 220px; object-fit: cover; display: none; }
-    .status-msg { margin-top: 12px; font-size: 13px; color: #94a3b8; }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* สลับกระจกสำหรับกล้องหน้า */
+    }
+    #capturedPhoto {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+      transform: scaleX(-1);
+    }
+    .status-msg { margin-top: 12px; font-size: 13px; color: #94a3b8; line-height: 1.5; }
     .badge {
       background: #0f172a;
       border: 1px solid #334155;
@@ -121,13 +131,12 @@
 <body>
 
   <div class="card">
-    <!-- 1. ส่วนหน้าจอสถานะเริ่มต้น -->
     <div id="loadingSec">
       <h3>🚚 ระบบขนส่งพัสดุ</h3>
       <p id="initStatusText">กำลังเชื่อมต่อ LINE ID...</p>
     </div>
 
-    <!-- 2. ส่วนลงทะเบียนคนขับใหม่ (ดึงโปรไฟล์ LINE อัตโนมัติ ไม่ต้องถ่ายรูป) -->
+    <!-- ส่วนลงทะเบียน -->
     <div id="regSec" style="display: none;">
       <div class="profile-header">
         <img id="regLinePic" class="profile-img" src="" alt="Profile">
@@ -148,13 +157,13 @@
       <div id="regStatus" class="status-msg"></div>
     </div>
 
-    <!-- 3. ส่วนหน้าต่างแจ้งเตือนสถานะต่างๆ -->
+    <!-- ส่วนแจ้งเตือน -->
     <div id="noticeSec" style="display: none;">
       <h3 id="noticeTitle">แจ้งเตือน</h3>
       <div class="notice-box" id="noticeBody"></div>
     </div>
 
-    <!-- 4. ส่วนลงเวลาทำงาน (บังคับถ่ายรูปหน้าสดตอนลงเวลา) -->
+    <!-- ส่วนลงเวลาทำงาน (บังคับถ่ายสดจากกล้องหน้าเท่านั้น) -->
     <div id="checkSec" style="display: none;">
       <div class="profile-header">
         <img id="checkLinePic" class="profile-img" src="" alt="Profile">
@@ -164,25 +173,26 @@
         </div>
       </div>
 
-      <h3>ระบบลงเวลาทำงาน</h3>
+      <h3>🏁 เช็กอินถึงจุดหมาย</h3>
       <div class="badge" id="empBadge"></div>
 
-      <select id="checkType">
-        <option value="เข้างาน">🟢 เข้างาน (เริ่มรอบวิ่ง)</option>
-        <option value="ออกงาน">🔴 ออกงาน (จบรอบวิ่ง)</option>
+      <!-- รายการสาขา/DC ปลายทาง -->
+      <select id="destSelect" onchange="validateCheckinDistance()">
+        <option value="">-- กรุณาเลือกสาขาปลายทาง --</option>
       </select>
 
-      <div class="preview-box">
-        <span id="checkPlaceholder" style="color:#64748b; font-size:13px;">📸 ถ่ายรูปสแกนหน้าเพื่อลงเวลา</span>
-        <img id="checkPreview" alt="ตัวอย่างภาพ">
+      <!-- กล่องกล้องหน้าสด -->
+      <div class="camera-container">
+        <video id="videoFeed" autoplay playsinline muted></video>
+        <img id="capturedPhoto" alt="ภาพถ่ายยืนยัน">
+        <canvas id="captureCanvas" style="display:none;"></canvas>
       </div>
 
-      <!-- บังคับเปิดกล้องหน้าสดเท่านั้น -->
-      <label class="btn-cam-label" for="checkFileInput">📸 ถ่ายรูปยืนยันตัวตน (กล้องหน้า)</label>
-      <input type="file" id="checkFileInput" accept="image/*" capture="user" style="display:none;" onchange="handlePhoto(this)">
+      <button type="button" id="btnSnap" class="btn-cam" onclick="takeSnapshot()">📸 กดถ่ายรูปยืนยันตัวตน (กล้องหน้าสด)</button>
+      <button type="button" id="btnRetake" class="btn-cam" style="display:none; background:#475569 !important;" onclick="retakePhoto()">🔄 ถ่ายรูปใหม่</button>
 
-      <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันลงเวลา</button>
-      <div id="checkStatus" class="status-msg">กำลังระบุพิกัด GPS...</div>
+      <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันถึงจุดหมาย</button>
+      <div id="checkStatus" class="status-msg">กำลังดึงพิกัด GPS...</div>
     </div>
   </div>
 
@@ -190,53 +200,206 @@
     const LIFF_ID = "2011720736-FTzsT0tU";
     const API_URL = "https://script.google.com/macros/s/AKfycbwF8JEzOZ07a_t69Fqx5vT9TrKb3cuWSFL0r8Lxf2Dol6J0V1D64irB9D0uFR2u2lCdMA/exec";
 
+    const BRANCHES = [
+      { name: "DC020 - สาขาเชียงราย", lat: 19.805456, lng: 99.750431 },
+      { name: "DC019 - สาขานครปฐม", lat: 14.023389, lng: 100.258996 },
+      { name: "DC017 - สาขาสมุทรปราการ", lat: 13.647659, lng: 100.542728 },
+      { name: "DC016 - สาขาเชียงใหม่", lat: 18.745124, lng: 99.012827 },
+      { name: "DC014 - สาขาสงขลา", lat: 7.091895, lng: 100.578084 },
+      { name: "DC013 - สาขาสุราษฎร์ธานี", lat: 9.107207, lng: 99.16104 },
+      { name: "DC011 - สาขาพัทยา", lat: 12.863535, lng: 100.906346 },
+      { name: "DC010 - สาขาสุรินทร์", lat: 14.971223, lng: 103.524846 },
+      { name: "DC009 - สาขาเพชรบูรณ์", lat: 16.74352, lng: 101.196398 },
+      { name: "DC008 - สาขานครศรีธรรมราช", lat: 8.331915, lng: 99.884532 },
+      { name: "DC007 - สาขาอุดรธานี", lat: 17.306272, lng: 102.849829 },
+      { name: "DC006 - สาขานครสวรรค์", lat: 15.639752, lng: 100.133297 },
+      { name: "DC005 - สาขาอุบลราชธานี", lat: 15.181401, lng: 104.913779 },
+      { name: "DC004 - สาขาร้อยเอ็ด", lat: 15.979452, lng: 103.626549 },
+      { name: "DC003 - สาขานครราชสีมา", lat: 15.062243, lng: 102.193027 },
+      { name: "DC001 - สาขาขอนแก่น", lat: 16.489782, lng: 102.780493 },
+      { name: "Head Office (HQ)", lat: 13.900023, lng: 101.544922 }
+    ];
+
     let profile = null;
     let curLat = null;
     let curLng = null;
     let curPhoto = null;
+    let curDistance = null;
+    let videoStream = null;
 
     window.onload = function() {
-      if (typeof liff === "undefined") {
-        alert("ไม่สามารถโหลด LIFF SDK ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
+      const sel = document.getElementById('destSelect');
+      BRANCHES.forEach((b, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.innerText = b.name;
+        sel.appendChild(opt);
+      });
+
+      startFastGPS();
+
+      if (typeof liff !== "undefined") {
+        liff.init({ liffId: LIFF_ID })
+          .then(() => {
+            if (!liff.isLoggedIn()) {
+              liff.login();
+            } else {
+              liff.getProfile().then(p => {
+                profile = p;
+                checkUser();
+              }).catch(err => alert("ดึงโปรไฟล์ LINE ไม่สำเร็จ: " + err.message));
+            }
+          })
+          .catch(err => alert("LIFF Error: " + err.message));
+      }
+    };
+
+    // เปิดกล้องหน้าสดโดยตรง (บังคับ user camera)
+    function startLiveCamera() {
+      const video = document.getElementById('videoFeed');
+      const constraints = {
+        video: {
+          facingMode: { exact: "user" },
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        },
+        audio: false
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints)
+        .then(stream => {
+          videoStream = stream;
+          video.srcObject = stream;
+        })
+        .catch(err => {
+          // หากบางเครื่องติดเงื่อนไข exact ให้ fallback แบบ user ทั่วไป
+          navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+            .then(stream => {
+              videoStream = stream;
+              video.srcObject = stream;
+            })
+            .catch(e => {
+              alert("กรุณาอนุญาตให้เข้าถึงกล้องหน้า: " + e.message);
+            });
+        });
+    }
+
+    // ถ่ายภาพจากเฟรมสดทันที
+    function takeSnapshot() {
+      const video = document.getElementById('videoFeed');
+      const canvas = document.getElementById('captureCanvas');
+      const photo = document.getElementById('capturedPhoto');
+
+      if (!video.videoWidth) {
+        alert("กล้องยังไม่พร้อมใช้งาน กรุณารอสักครู่");
         return;
       }
 
-      liff.init({ liffId: LIFF_ID })
-        .then(() => {
-          if (!liff.isLoggedIn()) {
-            liff.login();
-          } else {
-            liff.getProfile().then(p => {
-              profile = p;
-              checkUser();
-            }).catch(err => {
-              alert("ไม่สามารถดึงข้อมูลโปรไฟล์ LINE: " + err.message);
-            });
-          }
-        })
-        .catch(err => {
-          alert("LIFF Init เกิดข้อผิดพลาด: " + err.message);
-        });
-    };
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      curPhoto = canvas.toDataURL('image/jpeg', 0.7);
+      photo.src = curPhoto;
+      photo.style.display = 'block';
+      video.style.display = 'none';
+
+      document.getElementById('btnSnap').style.display = 'none';
+      document.getElementById('btnRetake').style.display = 'block';
+
+      validateCheckinDistance();
+    }
+
+    // สั่งถ่ายใหม่
+    function retakePhoto() {
+      curPhoto = null;
+      document.getElementById('capturedPhoto').style.display = 'none';
+      document.getElementById('videoFeed').style.display = 'block';
+      document.getElementById('btnSnap').style.display = 'block';
+      document.getElementById('btnRetake').style.display = 'none';
+      validateCheckinDistance();
+    }
+
+    function startFastGPS() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            curLat = pos.coords.latitude;
+            curLng = pos.coords.longitude;
+            validateCheckinDistance();
+          },
+          () => {
+            document.getElementById('checkStatus').innerText = "⚠️ กรุณาเปิด GPS บนโทรศัพท์";
+            document.getElementById('checkStatus').style.color = "#f87171";
+          },
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 30000 }
+        );
+
+        navigator.geolocation.watchPosition(pos => {
+          curLat = pos.coords.latitude;
+          curLng = pos.coords.longitude;
+          validateCheckinDistance();
+        }, null, { enableHighAccuracy: true, maximumAge: 10000 });
+      }
+    }
+
+    function calcDistanceMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const φ1 = lat1 * Math.PI / 180;
+      const φ2 = lat2 * Math.PI / 180;
+      const Δφ = (lat2 - lat1) * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+      return Math.round(R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))));
+    }
+
+    function validateCheckinDistance() {
+      const selIdx = document.getElementById('destSelect').value;
+      const statusEl = document.getElementById('checkStatus');
+      const submitBtn = document.getElementById('btnCheckSubmit');
+
+      if (!curLat || !curLng) {
+        statusEl.innerText = "⏳ กำลังจับพิกัด GPS...";
+        statusEl.style.color = "#38bdf8";
+        submitBtn.disabled = true;
+        return;
+      }
+
+      if (selIdx === "") {
+        statusEl.innerText = `📍 พิกัดพร้อม (${curLat.toFixed(4)}, ${curLng.toFixed(4)}) - กรุณาเลือกสาขาปลายทาง`;
+        statusEl.style.color = "#94a3b8";
+        submitBtn.disabled = true;
+        return;
+      }
+
+      const targetBranch = BRANCHES[Number(selIdx)];
+      curDistance = calcDistanceMeters(curLat, curLng, targetBranch.lat, targetBranch.lng);
+
+      if (curDistance <= 500) {
+        statusEl.innerHTML = `✅ อยู่ในพื้นที่ ${targetBranch.name}<br>ห่างจากจุดหมายเพียง <b>${curDistance} เมตร</b> (ผ่านเกณฑ์ 500 ม.)`;
+        statusEl.style.color = "#4ade80";
+        if (curPhoto) submitBtn.disabled = false;
+        else submitBtn.disabled = true;
+      } else {
+        statusEl.innerHTML = `❌ <b>อยู่นอกพื้นที่เช็กอิน!</b><br>ห่างจาก ${targetBranch.name} อยู่ <b>${curDistance.toLocaleString()} เมตร</b> (เกินระยะ 500 ม.)`;
+        statusEl.style.color = "#f87171";
+        submitBtn.disabled = true;
+      }
+    }
 
     function checkUser() {
-      document.getElementById('initStatusText').innerText = "กำลังตรวจสอบสิทธิ์ในระบบ...";
-
       fetch(`${API_URL}?action=checkUser&uid=${encodeURIComponent(profile.userId)}`, {
         method: "GET",
         mode: "cors",
         redirect: "follow"
       })
-      .then(res => {
-        if (!res.ok) throw new Error("HTTP error " + res.status);
-        return res.json();
-      })
+      .then(res => res.json())
       .then(res => {
         document.getElementById('loadingSec').style.display = 'none';
 
         if (res.exists) {
           if (res.status === "อนุมัติ") {
-            // อนุมัติแล้ว -> เปิดหน้าลงเวลาทำงานทันที
             document.getElementById('checkLinePic').src = profile.pictureUrl || "https://placehold.co/48x48?text=LINE";
             document.getElementById('checkLineName').innerText = profile.displayName;
             document.getElementById('checkDept').innerText = "สายส่ง: " + res.dept;
@@ -244,14 +407,14 @@
               👤 <b>พนักงาน:</b> ${res.empName} (รหัส: ${res.empId})
             `;
             document.getElementById('checkSec').style.display = 'block';
-            getGPS();
+            startLiveCamera(); // เปิดสตรีมกล้องหน้าทันที
+            validateCheckinDistance();
           } else if (res.status === "รออนุมัติ") {
             showNotice("รอการอนุมัติ", `คุณ <b>${res.empName}</b> ได้ลงทะเบียนไว้แล้ว<br><br>กรุณารอแอดมินกดยืนยันอนุมัติในระบบ`);
           } else {
             showNotice("แจ้งเตือน", `สถานะบัญชี: ${res.status}`);
           }
         } else {
-          // ยังไม่ได้ลงทะเบียน -> เปิดหน้าลงทะเบียนพร้อมดึงรูปโปรไฟล์ LINE
           document.getElementById('regLinePic').src = profile.pictureUrl || "https://placehold.co/48x48?text=LINE";
           document.getElementById('regLineName').innerText = profile.displayName;
           document.getElementById('regSec').style.display = 'block';
@@ -259,7 +422,7 @@
       })
       .catch(err => {
         document.getElementById('loadingSec').style.display = 'none';
-        alert("เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: " + err.message + "\nกรุณาตรวจสอบสิทธิ์การ Deploy ของ Apps Script (Who has access: Anyone)");
+        alert("เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: " + err.message);
       });
     }
 
@@ -277,9 +440,7 @@
 
       const btn = document.getElementById('btnRegSubmit');
       btn.disabled = true;
-      const statusEl = document.getElementById('regStatus');
-      statusEl.innerText = "⏳ กำลังส่งข้อมูลลงทะเบียน...";
-      statusEl.style.color = "#38bdf8";
+      document.getElementById('regStatus').innerText = "⏳ กำลังส่งข้อมูลลงทะเบียน...";
 
       fetch(API_URL, {
         method: "POST",
@@ -301,97 +462,26 @@
           document.getElementById('regSec').style.display = 'none';
           showNotice("ลงทะเบียนสำเร็จ", "ส่งข้อมูลเรียบร้อยแล้ว แจ้งแอดมินให้อนุมัติสิทธิ์ได้เลยครับ");
         } else {
-          alert(res.error || "เกิดข้อผิดพลาดในการลงทะเบียน");
+          alert(res.error || "บันทึกไม่สำเร็จ");
           btn.disabled = false;
-          statusEl.innerText = res.error || "บันทึกไม่สำเร็จ";
-          statusEl.style.color = "#f87171";
         }
       })
       .catch(err => {
         alert("ส่งข้อมูลไม่สำเร็จ: " + err.message);
         btn.disabled = false;
-        statusEl.innerText = err.message;
-        statusEl.style.color = "#f87171";
       });
     }
 
-    function handlePhoto(input) {
-      if (!input.files || input.files.length === 0) return;
-      const file = input.files[0];
-
-      const statusEl = document.getElementById('checkStatus');
-      statusEl.innerText = "⏳ กำลังโหลดรูปถ่าย...";
-      statusEl.style.color = "#38bdf8";
-
-      document.getElementById('checkPlaceholder').style.display = 'none';
-      const img = document.getElementById('checkPreview');
-      img.src = URL.createObjectURL(file);
-      img.style.display = 'block';
-
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const tempImg = new Image();
-        tempImg.onload = function() {
-          const canvas = document.createElement('canvas');
-          let width = tempImg.width;
-          let height = tempImg.height;
-          const maxSide = 640;
-
-          if (width > maxSide || height > maxSide) {
-            if (width > height) {
-              height = Math.round((height * maxSide) / width);
-              width = maxSide;
-            } else {
-              width = Math.round((width * maxSide) / height);
-              height = maxSide;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          canvas.getContext('2d').drawImage(tempImg, 0, 0, width, height);
-          curPhoto = canvas.toDataURL('image/jpeg', 0.7);
-
-          statusEl.innerText = "✅ ถ่ายรูปสำเร็จ";
-          statusEl.style.color = "#4ade80";
-          if (curLat && curLng) {
-            document.getElementById('btnCheckSubmit').disabled = false;
-          } else {
-            statusEl.innerText = "✅ ได้รูปแล้ว (กำลังรอพิกัด GPS...)";
-          }
-        };
-        tempImg.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
-    }
-
-    function getGPS() {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          pos => {
-            curLat = pos.coords.latitude;
-            curLng = pos.coords.longitude;
-            const statusEl = document.getElementById('checkStatus');
-            statusEl.innerText = "📍 ดึงพิกัด GPS สำเร็จ พร้อมลงเวลา";
-            statusEl.style.color = "#38bdf8";
-            if (curPhoto) document.getElementById('btnCheckSubmit').disabled = false;
-          },
-          () => {
-            const statusEl = document.getElementById('checkStatus');
-            statusEl.innerText = "❌ กรุณาเปิด GPS ตำแหน่ง";
-            statusEl.style.color = "#f87171";
-          },
-          { enableHighAccuracy: true, timeout: 8000 }
-        );
-      }
-    }
-
     function doAttendance() {
+      const selIdx = document.getElementById('destSelect').value;
+      if (selIdx === "") return alert("กรุณาเลือกสาขาปลายทาง");
+      if (!curPhoto) return alert("กรุณากดถ่ายรูปยืนยันตัวตนก่อน");
+      if (curDistance > 500) return alert("อยู่นอกพื้นที่ ไม่สามารถบันทึกได้");
+
+      const targetBranch = BRANCHES[Number(selIdx)];
       const btn = document.getElementById('btnCheckSubmit');
       btn.disabled = true;
-      const statusEl = document.getElementById('checkStatus');
-      statusEl.innerText = "⏳ กำลังบันทึกเวลาและอัปโหลดรูป...";
-      statusEl.style.color = "#38bdf8";
+      document.getElementById('checkStatus').innerText = "⏳ กำลังบันทึกข้อมูลและอัปโหลดรูป...";
 
       fetch(API_URL, {
         method: "POST",
@@ -401,7 +491,8 @@
         body: JSON.stringify({
           action: "recordAttendance",
           lineUserId: profile.userId,
-          type: document.getElementById('checkType').value,
+          locationName: targetBranch.name,
+          distance: curDistance,
           lat: curLat,
           lng: curLng,
           image: curPhoto
@@ -411,19 +502,18 @@
       .then(res => {
         if (res.success) {
           alert(res.message);
+          if (videoStream) {
+            videoStream.getTracks().forEach(track => track.stop());
+          }
           liff.closeWindow();
         } else {
           alert("ไม่สำเร็จ: " + (res.error || res.message));
           btn.disabled = false;
-          statusEl.innerText = res.error || "บันทึกไม่สำเร็จ";
-          statusEl.style.color = "#f87171";
         }
       })
       .catch(err => {
         alert("เชื่อมต่อไม่สำเร็จ: " + err.message);
         btn.disabled = false;
-        statusEl.innerText = err.message;
-        statusEl.style.color = "#f87171";
       });
     }
   </script>
