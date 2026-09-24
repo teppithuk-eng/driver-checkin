@@ -8,9 +8,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ระบบลงเวลาคนขับรถส่งของ</title>
 
-  <!-- สคริปต์สลัดแคชแบบเด็ดขาด -->
+  <!-- สคริปต์บังคับล้างแคชใน LINE In-App Browser ทันที -->
   <script>
-    const BUILD_VERSION = "20260924_v10";
+    const BUILD_VERSION = "20260924_v15_fast";
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("bv") !== BUILD_VERSION) {
       urlParams.set("bv", BUILD_VERSION);
@@ -86,6 +86,7 @@
       color: #fff;
       display: block;
       box-sizing: border-box;
+      transition: all 0.2s ease;
     }
     .btn-cam { background: #0284c7 !important; margin-top: 12px; }
     button:disabled { background: #334155 !important; color: #64748b !important; cursor: not-allowed; }
@@ -168,7 +169,7 @@
       <div class="notice-box" id="noticeBody"></div>
     </div>
 
-    <!-- ส่วนลงเวลาทำงาน (ตรวจจับอัตโนมัติ ไม่มี Dropdown) -->
+    <!-- ส่วนลงเวลาทำงาน (สแกนหน้า + ออโต้พิกัด) -->
     <div id="checkSec" style="display: none;">
       <div class="profile-header">
         <img id="checkLinePic" class="profile-img" src="" alt="Profile">
@@ -181,7 +182,7 @@
       <h3>🏁 เช็กอินถึงจุดหมาย</h3>
       <div class="badge" id="empBadge"></div>
 
-      <!-- สตรีมกล้องหน้า -->
+      <!-- สตรีมกล้องหน้าสด -->
       <div class="camera-container">
         <video id="videoFeed" autoplay playsinline muted></video>
         <img id="capturedPhoto" alt="ภาพถ่ายยืนยัน">
@@ -191,8 +192,8 @@
       <button type="button" id="btnSnap" class="btn-cam" onclick="takeSnapshot()">📸 กดถ่ายรูปยืนยันตัวตน (กล้องหน้า)</button>
       <button type="button" id="btnRetake" class="btn-cam" style="display:none; background:#475569 !important;" onclick="retakePhoto()">🔄 ถ่ายรูปใหม่</button>
 
-      <!-- กล่องสถานะสาขาอัตโนมัติ -->
-      <div id="checkStatus" class="status-msg">⏳ กำลังคำนวณหาสาขาที่ใกล้ที่สุดจาก GPS...</div>
+      <!-- กล่องแสดงสถานะสาขาและ GPS อัตโนมัติ -->
+      <div id="checkStatus" class="status-msg">⏳ กำลังค้นหาสาขาปลายทางจากพิกัด GPS...</div>
 
       <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันถึงจุดหมาย</button>
     </div>
@@ -202,6 +203,7 @@
     const LIFF_ID = "2011720736-FTzsT0tU";
     const API_URL = "https://script.google.com/macros/s/AKfycbwF8JEzOZ07a_t69Fqx5vT9TrKb3cuWSFL0r8Lxf2Dol6J0V1D64irB9D0uFR2u2lCdMA/exec";
 
+    // ฐานข้อมูลพิกัด 16 สาขา + Head Office
     const BRANCHES = [
       { name: "DC020 - สาขาเชียงราย", lat: 19.805456, lng: 99.750431 },
       { name: "DC019 - สาขานครปฐม", lat: 14.023389, lng: 100.258996 },
@@ -257,10 +259,8 @@
       return Math.round(R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))));
     }
 
-    // คำนวณหาสาขาที่ใกล้ตำแหน่งจริงที่สุด
     function autoDetectNearestBranch() {
       if (!curLat || !curLng) return;
-
       let minDistance = Infinity;
       let closest = null;
 
@@ -279,7 +279,7 @@
       const submitBtn = document.getElementById('btnCheckSubmit');
 
       if (curDistance <= 500) {
-        statusEl.innerHTML = `📍 ตรวจพบจุดหมาย: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance} เมตร</b><br><span style="color:#4ade80; font-weight:bold;">✅ อยู่ในรัศมีที่กำหนด (ไม่เกิน 500 ม.)</span>`;
+        statusEl.innerHTML = `📍 ตรวจพบสาขาปลายทาง: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance} เมตร</b><br><span style="color:#4ade80; font-weight:bold;">✅ อยู่ในรัศมีที่กำหนด (ไม่เกิน 500 ม.)</span>`;
         if (curPhoto) submitBtn.disabled = false;
         else submitBtn.disabled = true;
       } else {
@@ -326,6 +326,7 @@
       canvas.height = Math.round(video.videoHeight * (360 / video.videoWidth));
       canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
+      // บีบอัดรูปขนาดเล็กพิเศษ ~35KB ส่งข้อมูลเร็วขึ้นทันที
       curPhoto = canvas.toDataURL('image/jpeg', 0.5);
       photo.src = curPhoto;
       photo.style.display = 'block';
@@ -416,24 +417,39 @@
       .catch(err => { alert("ส่งข้อมูลไม่สำเร็จ: " + err.message); btn.disabled = false; });
     }
 
+    // ฟังก์ชันบันทึกพร้อมระบบ Loading และป้องกันกดซ้ำ
     function doAttendance() {
       if (!nearestBranch) return alert("ยังไม่สามารถระบุพิกัดสาขาได้");
       if (!curPhoto) return alert("กรุณากดถ่ายรูปยืนยันตัวตนก่อน");
       if (curDistance > 500) return alert("อยู่นอกพื้นที่ ไม่สามารถบันทึกได้");
 
+      const btn = document.getElementById('btnCheckSubmit');
+      const retakeBtn = document.getElementById('btnRetake');
+      const statusEl = document.getElementById('checkStatus');
+
+      // ล็อกปุ่มทันทีในระดับ Millisecond และขึ้น Loading
+      btn.disabled = true;
+      btn.innerHTML = `⏳ กำลังบันทึกข้อมูล กรุณารอสักครู่...`;
+      btn.style.opacity = "0.7";
+      if (retakeBtn) retakeBtn.style.display = "none";
+      statusEl.innerHTML = `<span style="color:#38bdf8;">🔄 กำลังอัปโหลดภาพและลงเวลาเข้าระบบ ห้ามปิดหน้าต่าง...</span>`;
+
       const empName = currentUser ? currentUser.empName : profile.displayName;
       const empId = currentUser ? currentUser.empId : "-";
-
-      const btn = document.getElementById('btnCheckSubmit');
-      btn.disabled = true;
-      document.getElementById('checkStatus').innerText = "⚡ กำลังบันทึกข้อมูลด่วน...";
 
       const now = new Date();
       const dateStr = now.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+      // ดัก Timeout 25 วินาทีป้องกันเน็ตค้าง
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
       fetch(API_URL, {
-        method: "POST", mode: "cors", redirect: "follow",
+        method: "POST",
+        mode: "cors",
+        redirect: "follow",
+        signal: controller.signal,
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           action: "recordAttendance",
@@ -447,7 +463,11 @@
       })
       .then(res => res.json())
       .then(res => {
+        clearTimeout(timeoutId);
         if (res.success) {
+          btn.innerHTML = `✅ บันทึกสำเร็จเรียบร้อย`;
+          btn.style.background = "#16a34a";
+
           const msgText = `✅ บันทึกเช็กอินถึงจุดหมายสำเร็จ\n` +
                           `──────────────────\n` +
                           `👤 พนักงาน: ${empName} (รหัส: ${empId})\n` +
@@ -474,13 +494,20 @@
             liff.closeWindow();
           }
         } else {
-          alert("ไม่สำเร็จ: " + (res.error || res.message));
-          btn.disabled = false;
+          throw new Error(res.error || res.message || "เกิดข้อผิดพลาดจากเซิร์ฟเวอร์");
         }
       })
       .catch(err => {
-        alert("เชื่อมต่อไม่สำเร็จ: " + err.message);
+        clearTimeout(timeoutId);
+        // คืนค่าปุ่มให้กลับมากดใหม่ได้หากล้มเหลว
         btn.disabled = false;
+        btn.innerHTML = `ยืนยันถึงจุดหมาย (ลองอีกครั้ง)`;
+        btn.style.opacity = "1";
+        if (retakeBtn) retakeBtn.style.display = "block";
+
+        const errDetail = err.name === 'AbortError' ? 'การเชื่อมต่อหมดเวลา (Timeout) กรุณากดใหม่อีกครั้ง' : err.message;
+        statusEl.innerHTML = `<span style="color:#f87171;">❌ บันทึกไม่สำเร็จ: ${errDetail}</span>`;
+        alert("บันทึกไม่สำเร็จ: " + errDetail);
       });
     }
   </script>
