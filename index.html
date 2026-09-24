@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ระบบลงเวลาคนขับรถส่งของ</title>
+  <!-- LINE LIFF SDK ตัวจริง -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, sans-serif; }
+    body {
+      background: #0f172a;
+      color: #e2e8f0;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 24px;
+      border-radius: 16px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    h3 { color: #38bdf8; margin-top: 0; margin-bottom: 8px; }
+    p { color: #94a3b8; font-size: 14px; margin-bottom: 16px; }
+    .profile-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      border: 1px solid #334155;
+      text-align: left;
+    }
+    .profile-img {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 2px solid #38bdf8;
+      object-fit: cover;
+    }
+    input, select {
+      width: 100%;
+      padding: 13px;
+      margin-top: 10px;
+      background: #0f172a;
+      border: 1px solid #475569;
+      color: #fff;
+      border-radius: 8px;
+      outline: none;
+      font-size: 15px;
+    }
+    button, .btn-cam-label {
+      width: 100%;
+      padding: 14px;
+      margin-top: 16px;
+      border-radius: 8px;
+      border: none;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      box-sizing: border-box;
+    }
+    .btn-cam-label {
+      background: #0284c7 !important;
+      margin-top: 12px;
+    }
+    button:disabled { background: #334155 !important; color: #64748b !important; cursor: not-allowed; }
+    .preview-box {
+      width: 100%;
+      margin-top: 12px;
+      border-radius: 10px;
+      background: #0f172a;
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 2px dashed #475569;
+    }
+    .preview-box img { width: 100%; max-height: 220px; object-fit: cover; display: none; }
+    .status-msg { margin-top: 12px; font-size: 13px; color: #94a3b8; }
+    .badge {
+      background: #0f172a;
+      border: 1px solid #334155;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      text-align: left;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    .notice-box {
+      background: #1e1b4b;
+      border: 1px solid #4338ca;
+      color: #c7d2fe;
+      padding: 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div id="loadingSec">
+      <h3>🚚 ระบบขนส่งพัสดุ</h3>
+      <p id="initStatusText">กำลังเชื่อมต่อ LINE ID...</p>
+    </div>
+
+    <!-- หน้าลงทะเบียน (ดึงโปรไฟล์ LINE อัตโนมัติ ไม่ต้องถ่ายรูป) -->
+    <div id="regSec" style="display: none;">
+      <div class="profile-header">
+        <img id="regLinePic" class="profile-img" src="" alt="Profile">
+        <div>
+          <b id="regLineName" style="color: #38bdf8; font-size: 15px;">-</b><br>
+          <span style="font-size: 12px; color: #94a3b8;">เชื่อมต่อบัญชี LINE แล้ว</span>
+        </div>
+      </div>
+
+      <h3>🚚 ลงทะเบียนคนขับรถ</h3>
+      <p>กรอกข้อมูลเพื่อขออนุมัติใช้งานระบบ</p>
+      
+      <input type="text" id="regEmpId" placeholder="รหัสพนักงาน / รหัสคนขับ" required>
+      <input type="text" id="regEmpName" placeholder="ชื่อ - นามสกุล" required>
+      <input type="text" id="regDept" placeholder="สายส่ง / ทะเบียนรถ" required>
+
+      <button type="button" id="btnRegSubmit" onclick="doRegister()">ยืนยันลงทะเบียน</button>
+      <div id="regStatus" class="status-msg"></div>
+    </div>
+
+    <!-- หน้าต่างแจ้งเตือน -->
+    <div id="noticeSec" style="display: none;">
+      <h3 id="noticeTitle">แจ้งเตือน</h3>
+      <div class="notice-box" id="noticeBody"></div>
+    </div>
+
+    <!-- หน้าลงเวลาทำงาน (สแกนกล้องหน้าสด) -->
+    <div id="checkSec" style="display: none;">
+      <div class="profile-header">
+        <img id="checkLinePic" class="profile-img" src="" alt="Profile">
+        <div>
+          <b id="checkLineName" style="color: #38bdf8; font-size: 15px;">-</b><br>
+          <span id="checkDept" style="font-size: 12px; color: #94a3b8;">สายส่ง: -</span>
+        </div>
+      </div>
+
+      <h3>ระบบลงเวลาทำงาน</h3>
+      <div class="badge" id="empBadge"></div>
+
+      <select id="checkType">
+        <option value="เข้างาน">🟢 เข้างาน (เริ่มรอบวิ่ง)</option>
+        <option value="ออกงาน">🔴 ออกงาน (จบรอบวิ่ง)</option>
+      </select>
+
+      <div class="preview-box">
+        <span id="checkPlaceholder" style="color:#64748b; font-size:13px;">📸 ถ่ายรูปสแกนหน้าเพื่อลงเวลา</span>
+        <img id="checkPreview" alt="ตัวอย่างภาพ">
+      </div>
+
+      <label class="btn-cam-label" for="checkFileInput">📸 ถ่ายรูปยืนยันตัวตน (กล้องหน้า)</label>
+      <input type="file" id="checkFileInput" accept="image/*" capture="user" style="display:none;" onchange="handlePhoto(this)">
+
+      <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันลงเวลา</button>
+      <div id="checkStatus" class="status-msg">กำลังระบุพิกัด GPS...</div>
+    </div>
+  </div>
+
+  <script>
+    const LIFF_ID = "2011720736-FTzsT0tU";
+    const API_URL = "https://script.google.com/macros/s/AKfycbwF8JEzOZ07a_t69Fqx5vT9TrKb3cuWSFL0r8Lxf2Dol6J0V1D64irB9D0uFR2u2lCdMA/exec";
+
+    let profile = null;
+    let curLat = null;
+    let curLng = null;
+    let curPhoto = null;
+
+    window.onload = function() {
+      liff.init({ liffId: LIFF_ID })
+        .then(() => {
+          if (!liff.isLoggedIn()) {
+            liff.login();
+          } else {
+            liff.getProfile().then(p => {
+              profile = p;
+              checkUser();
+            }).catch(err => {
+              alert("ไม่สามารถดึงโปรไฟล์ LINE ได้: " + err.message);
+            });
+          }
+        })
+        .catch(err => {
+          alert("LIFF Init Error: " + err.message);
+        });
+    };
+
+    function checkUser() {
+      fetch(`${API_URL}?action=checkUser&uid=${profile.userId}`)
+        .then(res => res.json())
+        .then(res => {
+          document.getElementById('loadingSec').style.display = 'none';
+
+          if (res.exists) {
+            if (res.status === "อนุมัติ") {
+              document.getElementById('checkLinePic').src = profile.pictureUrl || "https://via.placeholder.com/48";
+              document.getElementById('checkLineName').innerText = profile.displayName;
+              document.getElementById('checkDept').innerText = "สายส่ง: " + res.dept;
+              document.getElementById('empBadge').innerHTML = `
+                👤 <b>พนักงาน:</b> ${res.empName} (รหัส: ${res.empId})
+              `;
+              document.getElementById('checkSec').style.display = 'block';
+              getGPS();
+            } else if (res.status === "รออนุมัติ") {
+              showNotice("รอการอนุมัติ", `คุณ <b>${res.empName}</b> ได้ลงทะเบียนไว้แล้ว<br><br>กรุณารอแอดมินกดยืนยันอนุมัติในระบบ`);
+            } else {
+              showNotice("แจ้งเตือน", `สถานะบัญชี: ${res.status}`);
+            }
+          } else {
+            document.getElementById('regLinePic').src = profile.pictureUrl || "https://via.placeholder.com/48";
+            document.getElementById('regLineName').innerText = profile.displayName;
+            document.getElementById('regSec').style.display = 'block';
+          }
+        })
+        .catch(err => {
+          alert("เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: " + err.message);
+        });
+    }
+
+    function showNotice(title, html) {
+      document.getElementById('noticeTitle').innerText = title;
+      document.getElementById('noticeBody').innerHTML = html;
+      document.getElementById('noticeSec').style.display = 'block';
+    }
+
+    function doRegister() {
+      const id = document.getElementById('regEmpId').value.trim();
+      const name = document.getElementById('regEmpName').value.trim();
+      const dept = document.getElementById('regDept').value.trim();
+      if (!id || !name || !dept) return alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+
+      const btn = document.getElementById('btnRegSubmit');
+      btn.disabled = true;
+      const statusEl = document.getElementById('regStatus');
+      statusEl.innerText = "กำลังบันทึกข้อมูล...";
+
+      fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "register",
+          lineUserId: profile.userId,
+          empId: id,
+          empName: name,
+          dept: dept,
+          pictureUrl: profile.pictureUrl || ""
+        })
+      })
+      .then(res => res.json())
+      .then(res => {
+        if (res.success) {
+          document.getElementById('regSec').style.display = 'none';
+          showNotice("ลงทะเบียนสำเร็จ", "ส่งข้อมูลเรียบร้อยแล้ว แจ้งแอดมินให้อนุมัติสิทธิ์ได้เลยครับ");
+        } else {
+          alert(res.error || "เกิดข้อผิดพลาด");
+          btn.disabled = false;
+        }
+      })
+      .catch(err => {
+        alert("ส่งข้อมูลไม่สำเร็จ: " + err.message);
+        btn.disabled = false;
+      });
+    }
+
+    function handlePhoto(input) {
+      if (!input.files || input.files.length === 0) return;
+      const file = input.files[0];
+
+      const statusEl = document.getElementById('checkStatus');
+      statusEl.innerText = "⏳ กำลังดึงรูปถ่าย...";
+
+      document.getElementById('checkPlaceholder').style.display = 'none';
+      const img = document.getElementById('checkPreview');
+      img.src = URL.createObjectURL(file);
+      img.style.display = 'block';
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const tempImg = new Image();
+        tempImg.onload = function() {
+          const canvas = document.createElement('canvas');
+          let width = tempImg.width;
+          let height = tempImg.height;
+          const maxSide = 640;
+
+          if (width > maxSide || height > maxSide) {
+            if (width > height) {
+              height = Math.round((height * maxSide) / width);
+              width = maxSide;
+            } else {
+              width = Math.round((width * maxSide) / height);
+              height = maxSide;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(tempImg, 0, 0, width, height);
+          curPhoto = canvas.toDataURL('image/jpeg', 0.7);
+
+          statusEl.innerText = "✅ ถ่ายรูปสำเร็จ";
+          statusEl.style.color = "#4ade80";
+          if (curLat && curLng) {
+            document.getElementById('btnCheckSubmit').disabled = false;
+          }
+        };
+        tempImg.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function getGPS() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            curLat = pos.coords.latitude;
+            curLng = pos.coords.longitude;
+            const statusEl = document.getElementById('checkStatus');
+            statusEl.innerText = "📍 ดึงพิกัดสำเร็จ พร้อมลงเวลา";
+            statusEl.style.color = "#38bdf8";
+            if (curPhoto) document.getElementById('btnCheckSubmit').disabled = false;
+          },
+          () => {
+            const statusEl = document.getElementById('checkStatus');
+            statusEl.innerText = "❌ กรุณาเปิด GPS ตำแหน่ง";
+            statusEl.style.color = "#f87171";
+          },
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+      }
+    }
+
+    function doAttendance() {
+      const btn = document.getElementById('btnCheckSubmit');
+      btn.disabled = true;
+      const statusEl = document.getElementById('checkStatus');
+      statusEl.innerText = "⏳ กำลังบันทึกเวลาและอัปโหลดรูป...";
+
+      fetch(API_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "recordAttendance",
+          lineUserId: profile.userId,
+          type: document.getElementById('checkType').value,
+          lat: curLat,
+          lng: curLng,
+          image: curPhoto
+        })
+      })
+      .then(res => res.json())
+      .then(res => {
+        if (res.success) {
+          alert(res.message);
+          liff.closeWindow();
+        } else {
+          alert("ไม่สำเร็จ: " + (res.error || res.message));
+          btn.disabled = false;
+        }
+      })
+      .catch(err => {
+        alert("เชื่อมต่อไม่สำเร็จ: " + err.message);
+        btn.disabled = false;
+      });
+    }
+  </script>
+</body>
+</html>
