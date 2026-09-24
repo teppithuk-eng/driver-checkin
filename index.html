@@ -7,7 +7,7 @@
   <!-- LINE LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
-    * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, sans-serif; }
+    * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, BlinkMacSystemFont, sans-serif; }
     body {
       background: #0f172a;
       color: #e2e8f0;
@@ -47,6 +47,7 @@
       border-radius: 50%;
       border: 2px solid #38bdf8;
       object-fit: cover;
+      background: #334155;
     }
     input, select {
       width: 100%;
@@ -120,19 +121,19 @@
 <body>
 
   <div class="card">
-    <!-- หน้าต่างโหลดสถานะ -->
+    <!-- 1. ส่วนหน้าจอสถานะเริ่มต้น -->
     <div id="loadingSec">
       <h3>🚚 ระบบขนส่งพัสดุ</h3>
       <p id="initStatusText">กำลังเชื่อมต่อ LINE ID...</p>
     </div>
 
-    <!-- ส่วนที่ 1: ลงทะเบียนคนขับใหม่ (ดึงโปรไฟล์ LINE อัตโนมัติ ไม่ต้องถ่ายรูป) -->
+    <!-- 2. ส่วนลงทะเบียนคนขับใหม่ (ดึงโปรไฟล์ LINE อัตโนมัติ ไม่ต้องถ่ายรูป) -->
     <div id="regSec" style="display: none;">
       <div class="profile-header">
         <img id="regLinePic" class="profile-img" src="" alt="Profile">
         <div>
           <b id="regLineName" style="color: #38bdf8; font-size: 15px;">-</b><br>
-          <span style="font-size: 12px; color: #94a3b8;">เชื่อมต่อบัญชี LINE แล้ว</span>
+          <span style="font-size: 12px; color: #94a3b8;">เชื่อมต่อบัญชี LINE สำเร็จ</span>
         </div>
       </div>
 
@@ -143,17 +144,17 @@
       <input type="text" id="regEmpName" placeholder="ชื่อ - นามสกุล" required>
       <input type="text" id="regDept" placeholder="สายส่ง / ทะเบียนรถ" required>
 
-      <button type="button" id="btnRegSubmit" onclick="doRegister()">ยืนยันลงทะเบียน</button>
+      <button type="button" id="btnRegSubmit" onclick="doRegister()">บันทึกข้อมูลลงทะเบียน</button>
       <div id="regStatus" class="status-msg"></div>
     </div>
 
-    <!-- ส่วนที่ 2: หน้าต่างแจ้งเตือนสถานะ -->
+    <!-- 3. ส่วนหน้าต่างแจ้งเตือนสถานะต่างๆ -->
     <div id="noticeSec" style="display: none;">
       <h3 id="noticeTitle">แจ้งเตือน</h3>
       <div class="notice-box" id="noticeBody"></div>
     </div>
 
-    <!-- ส่วนที่ 3: ระบบลงเวลาทำงาน (บังคับถ่ายรูปหน้าสดตอนลงเวลา) -->
+    <!-- 4. ส่วนลงเวลาทำงาน (บังคับถ่ายรูปหน้าสดตอนลงเวลา) -->
     <div id="checkSec" style="display: none;">
       <div class="profile-header">
         <img id="checkLinePic" class="profile-img" src="" alt="Profile">
@@ -176,6 +177,7 @@
         <img id="checkPreview" alt="ตัวอย่างภาพ">
       </div>
 
+      <!-- บังคับเปิดกล้องหน้าสดเท่านั้น -->
       <label class="btn-cam-label" for="checkFileInput">📸 ถ่ายรูปยืนยันตัวตน (กล้องหน้า)</label>
       <input type="file" id="checkFileInput" accept="image/*" capture="user" style="display:none;" onchange="handlePhoto(this)">
 
@@ -194,6 +196,11 @@
     let curPhoto = null;
 
     window.onload = function() {
+      if (typeof liff === "undefined") {
+        alert("ไม่สามารถโหลด LIFF SDK ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
+        return;
+      }
+
       liff.init({ liffId: LIFF_ID })
         .then(() => {
           if (!liff.isLoggedIn()) {
@@ -203,16 +210,18 @@
               profile = p;
               checkUser();
             }).catch(err => {
-              alert("ไม่สามารถดึงโปรไฟล์ LINE ได้: " + err.message);
+              alert("ไม่สามารถดึงข้อมูลโปรไฟล์ LINE: " + err.message);
             });
           }
         })
         .catch(err => {
-          alert("LIFF Init Error: " + err.message);
+          alert("LIFF Init เกิดข้อผิดพลาด: " + err.message);
         });
     };
 
     function checkUser() {
+      document.getElementById('initStatusText').innerText = "กำลังตรวจสอบสิทธิ์ในระบบ...";
+
       fetch(`${API_URL}?action=checkUser&uid=${encodeURIComponent(profile.userId)}`, {
         method: "GET",
         mode: "cors",
@@ -227,7 +236,8 @@
 
         if (res.exists) {
           if (res.status === "อนุมัติ") {
-            document.getElementById('checkLinePic').src = profile.pictureUrl || "https://via.placeholder.com/48";
+            // อนุมัติแล้ว -> เปิดหน้าลงเวลาทำงานทันที
+            document.getElementById('checkLinePic').src = profile.pictureUrl || "https://placehold.co/48x48?text=LINE";
             document.getElementById('checkLineName').innerText = profile.displayName;
             document.getElementById('checkDept').innerText = "สายส่ง: " + res.dept;
             document.getElementById('empBadge').innerHTML = `
@@ -241,13 +251,15 @@
             showNotice("แจ้งเตือน", `สถานะบัญชี: ${res.status}`);
           }
         } else {
-          document.getElementById('regLinePic').src = profile.pictureUrl || "https://via.placeholder.com/48";
+          // ยังไม่ได้ลงทะเบียน -> เปิดหน้าลงทะเบียนพร้อมดึงรูปโปรไฟล์ LINE
+          document.getElementById('regLinePic').src = profile.pictureUrl || "https://placehold.co/48x48?text=LINE";
           document.getElementById('regLineName').innerText = profile.displayName;
           document.getElementById('regSec').style.display = 'block';
         }
       })
       .catch(err => {
-        alert("เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: " + err.message);
+        document.getElementById('loadingSec').style.display = 'none';
+        alert("เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ: " + err.message + "\nกรุณาตรวจสอบสิทธิ์การ Deploy ของ Apps Script (Who has access: Anyone)");
       });
     }
 
@@ -266,7 +278,8 @@
       const btn = document.getElementById('btnRegSubmit');
       btn.disabled = true;
       const statusEl = document.getElementById('regStatus');
-      statusEl.innerText = "กำลังบันทึกข้อมูล...";
+      statusEl.innerText = "⏳ กำลังส่งข้อมูลลงทะเบียน...";
+      statusEl.style.color = "#38bdf8";
 
       fetch(API_URL, {
         method: "POST",
@@ -288,13 +301,17 @@
           document.getElementById('regSec').style.display = 'none';
           showNotice("ลงทะเบียนสำเร็จ", "ส่งข้อมูลเรียบร้อยแล้ว แจ้งแอดมินให้อนุมัติสิทธิ์ได้เลยครับ");
         } else {
-          alert(res.error || "เกิดข้อผิดพลาด");
+          alert(res.error || "เกิดข้อผิดพลาดในการลงทะเบียน");
           btn.disabled = false;
+          statusEl.innerText = res.error || "บันทึกไม่สำเร็จ";
+          statusEl.style.color = "#f87171";
         }
       })
       .catch(err => {
         alert("ส่งข้อมูลไม่สำเร็จ: " + err.message);
         btn.disabled = false;
+        statusEl.innerText = err.message;
+        statusEl.style.color = "#f87171";
       });
     }
 
@@ -303,7 +320,8 @@
       const file = input.files[0];
 
       const statusEl = document.getElementById('checkStatus');
-      statusEl.innerText = "⏳ กำลังดึงรูปถ่าย...";
+      statusEl.innerText = "⏳ กำลังโหลดรูปถ่าย...";
+      statusEl.style.color = "#38bdf8";
 
       document.getElementById('checkPlaceholder').style.display = 'none';
       const img = document.getElementById('checkPreview');
@@ -338,6 +356,8 @@
           statusEl.style.color = "#4ade80";
           if (curLat && curLng) {
             document.getElementById('btnCheckSubmit').disabled = false;
+          } else {
+            statusEl.innerText = "✅ ได้รูปแล้ว (กำลังรอพิกัด GPS...)";
           }
         };
         tempImg.src = e.target.result;
@@ -352,7 +372,7 @@
             curLat = pos.coords.latitude;
             curLng = pos.coords.longitude;
             const statusEl = document.getElementById('checkStatus');
-            statusEl.innerText = "📍 ดึงพิกัดสำเร็จ พร้อมลงเวลา";
+            statusEl.innerText = "📍 ดึงพิกัด GPS สำเร็จ พร้อมลงเวลา";
             statusEl.style.color = "#38bdf8";
             if (curPhoto) document.getElementById('btnCheckSubmit').disabled = false;
           },
@@ -371,6 +391,7 @@
       btn.disabled = true;
       const statusEl = document.getElementById('checkStatus');
       statusEl.innerText = "⏳ กำลังบันทึกเวลาและอัปโหลดรูป...";
+      statusEl.style.color = "#38bdf8";
 
       fetch(API_URL, {
         method: "POST",
@@ -394,11 +415,15 @@
         } else {
           alert("ไม่สำเร็จ: " + (res.error || res.message));
           btn.disabled = false;
+          statusEl.innerText = res.error || "บันทึกไม่สำเร็จ";
+          statusEl.style.color = "#f87171";
         }
       })
       .catch(err => {
         alert("เชื่อมต่อไม่สำเร็จ: " + err.message);
         btn.disabled = false;
+        statusEl.innerText = err.message;
+        statusEl.style.color = "#f87171";
       });
     }
   </script>
