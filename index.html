@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ระบบลงเวลาคนขับรถส่งของ</title>
+  <!-- LINE LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -97,7 +98,7 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
-      transform: scaleX(-1); /* สลับกระจกสำหรับกล้องหน้า */
+      transform: scaleX(-1);
     }
     #capturedPhoto {
       width: 100%;
@@ -163,7 +164,7 @@
       <div class="notice-box" id="noticeBody"></div>
     </div>
 
-    <!-- ส่วนลงเวลาทำงาน (บังคับถ่ายสดจากกล้องหน้าเท่านั้น) -->
+    <!-- ส่วนลงเวลาทำงาน (ถึงจุดหมาย) -->
     <div id="checkSec" style="display: none;">
       <div class="profile-header">
         <img id="checkLinePic" class="profile-img" src="" alt="Profile">
@@ -181,14 +182,14 @@
         <option value="">-- กรุณาเลือกสาขาปลายทาง --</option>
       </select>
 
-      <!-- กล่องกล้องหน้าสด -->
+      <!-- กล้องหน้าสด -->
       <div class="camera-container">
         <video id="videoFeed" autoplay playsinline muted></video>
         <img id="capturedPhoto" alt="ภาพถ่ายยืนยัน">
         <canvas id="captureCanvas" style="display:none;"></canvas>
       </div>
 
-      <button type="button" id="btnSnap" class="btn-cam" onclick="takeSnapshot()">📸 กดถ่ายรูปยืนยันตัวตน (กล้องหน้าสด)</button>
+      <button type="button" id="btnSnap" class="btn-cam" onclick="takeSnapshot()">📸 กดถ่ายรูปยืนยันตัวตน (กล้องหน้า)</button>
       <button type="button" id="btnRetake" class="btn-cam" style="display:none; background:#475569 !important;" onclick="retakePhoto()">🔄 ถ่ายรูปใหม่</button>
 
       <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันถึงจุดหมาย</button>
@@ -200,6 +201,7 @@
     const LIFF_ID = "2011720736-FTzsT0tU";
     const API_URL = "https://script.google.com/macros/s/AKfycbwF8JEzOZ07a_t69Fqx5vT9TrKb3cuWSFL0r8Lxf2Dol6J0V1D64irB9D0uFR2u2lCdMA/exec";
 
+    // รายการพิกัดสาขาทั้งหมด
     const BRANCHES = [
       { name: "DC020 - สาขาเชียงราย", lat: 19.805456, lng: 99.750431 },
       { name: "DC019 - สาขานครปฐม", lat: 14.023389, lng: 100.258996 },
@@ -254,15 +256,10 @@
       }
     };
 
-    // เปิดกล้องหน้าสดโดยตรง (บังคับ user camera)
     function startLiveCamera() {
       const video = document.getElementById('videoFeed');
       const constraints = {
-        video: {
-          facingMode: { exact: "user" },
-          width: { ideal: 640 },
-          height: { ideal: 480 }
-        },
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false
       };
 
@@ -272,19 +269,17 @@
           video.srcObject = stream;
         })
         .catch(err => {
-          // หากบางเครื่องติดเงื่อนไข exact ให้ fallback แบบ user ทั่วไป
-          navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
+          navigator.mediaDevices.getUserMedia({ video: true, audio: false })
             .then(stream => {
               videoStream = stream;
               video.srcObject = stream;
             })
             .catch(e => {
-              alert("กรุณาอนุญาตให้เข้าถึงกล้องหน้า: " + e.message);
+              alert("กรุณาอนุญาตให้เว็บเข้าถึงกล้องหน้า: " + e.message);
             });
         });
     }
 
-    // ถ่ายภาพจากเฟรมสดทันที
     function takeSnapshot() {
       const video = document.getElementById('videoFeed');
       const canvas = document.getElementById('captureCanvas');
@@ -311,7 +306,6 @@
       validateCheckinDistance();
     }
 
-    // สั่งถ่ายใหม่
     function retakePhoto() {
       curPhoto = null;
       document.getElementById('capturedPhoto').style.display = 'none';
@@ -407,7 +401,7 @@
               👤 <b>พนักงาน:</b> ${res.empName} (รหัส: ${res.empId})
             `;
             document.getElementById('checkSec').style.display = 'block';
-            startLiveCamera(); // เปิดสตรีมกล้องหน้าทันที
+            startLiveCamera();
             validateCheckinDistance();
           } else if (res.status === "รออนุมัติ") {
             showNotice("รอการอนุมัติ", `คุณ <b>${res.empName}</b> ได้ลงทะเบียนไว้แล้ว<br><br>กรุณารอแอดมินกดยืนยันอนุมัติในระบบ`);
@@ -483,6 +477,10 @@
       btn.disabled = true;
       document.getElementById('checkStatus').innerText = "⏳ กำลังบันทึกข้อมูลและอัปโหลดรูป...";
 
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
       fetch(API_URL, {
         method: "POST",
         mode: "cors",
@@ -501,11 +499,34 @@
       .then(res => res.json())
       .then(res => {
         if (res.success) {
-          alert(res.message);
-          if (videoStream) {
-            videoStream.getTracks().forEach(track => track.stop());
+          const msgText = `✅ บันทึกเช็กอินถึงจุดหมายสำเร็จ\n` +
+                          `──────────────────\n` +
+                          `👤 พนักงาน: ${profile.displayName}\n` +
+                          `🏁 ปลายทาง: ${targetBranch.name}\n` +
+                          `📅 วันที่: ${dateStr}\n` +
+                          `⏰ เวลา: ${timeStr} น.\n` +
+                          `📏 ระยะห่าง: ${curDistance} เมตร\n` +
+                          `📍 พิกัด: ${curLat.toFixed(5)}, ${curLng.toFixed(5)}\n` +
+                          `──────────────────\n` +
+                          `สถานะ: บันทึกข้อมูลเข้าระบบเรียบร้อยแล้ว`;
+
+          if (liff.isInClient()) {
+            liff.sendMessages([{
+              type: 'text',
+              text: msgText
+            }]).then(() => {
+              alert(res.message);
+              if (videoStream) videoStream.getTracks().forEach(track => track.stop());
+              liff.closeWindow();
+            }).catch(err => {
+              alert(res.message);
+              if (videoStream) videoStream.getTracks().forEach(track => track.stop());
+              liff.closeWindow();
+            });
+          } else {
+            alert(res.message);
+            liff.closeWindow();
           }
-          liff.closeWindow();
         } else {
           alert("ไม่สำเร็จ: " + (res.error || res.message));
           btn.disabled = false;
