@@ -8,9 +8,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ระบบลงเวลาคนขับรถส่งของ</title>
 
-  <!-- Force Cache Breaker -->
+  <!-- สคริปต์บังคับข้ามแคชใน LINE ทันที -->
   <script>
-    const BUILD_VERSION = "20260924_v20_fastlock";
+    const BUILD_VERSION = "20260924_v30_ultralock";
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("bv") !== BUILD_VERSION) {
       urlParams.set("bv", BUILD_VERSION);
@@ -18,7 +18,9 @@
     }
   </script>
 
+  <!-- LINE LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
   <style>
     * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; }
     body {
@@ -40,7 +42,6 @@
       width: 100%;
       text-align: center;
       box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-      position: relative;
     }
     h3 { color: #38bdf8; margin-top: 0; margin-bottom: 8px; }
     p { color: #94a3b8; font-size: 14px; margin-bottom: 16px; }
@@ -136,41 +137,9 @@
       font-size: 14px;
       line-height: 1.6;
     }
-
-    /* ฉากกั้นล็อกจอ 100% ระหว่างกำลังบันทึก ป้องกันการแตะซ้ำ */
-    #lockOverlay {
-      position: fixed;
-      top: 0; left: 0; width: 100vw; height: 100vh;
-      background: rgba(15, 23, 42, 0.85);
-      backdrop-filter: blur(4px);
-      z-index: 99999;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    .spinner {
-      width: 48px;
-      height: 48px;
-      border: 5px solid #334155;
-      border-top-color: #38bdf8;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-bottom: 16px;
-    }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
   </style>
 </head>
 <body>
-
-  <!-- จอกั้นล็อกการกดซ้ำ -->
-  <div id="lockOverlay">
-    <div class="spinner"></div>
-    <div style="color: #38bdf8; font-size: 16px; font-weight: bold;">⚡ กำลังบันทึกข้อมูล...</div>
-    <div style="color: #94a3b8; font-size: 13px; margin-top: 6px;">กรุณารอสักครู่ ห้ามปิดหน้าต่าง</div>
-  </div>
 
   <div class="card">
     <div id="loadingSec">
@@ -202,7 +171,7 @@
       <div class="notice-box" id="noticeBody"></div>
     </div>
 
-    <!-- ส่วนลงเวลาทำงาน -->
+    <!-- ส่วนลงเวลาทำงาน (สแกนหน้า + ออโต้พิกัด) -->
     <div id="checkSec" style="display: none;">
       <div class="profile-header">
         <img id="checkLinePic" class="profile-img" src="" alt="Profile">
@@ -215,6 +184,7 @@
       <h3>🏁 เช็กอินถึงจุดหมาย</h3>
       <div class="badge" id="empBadge"></div>
 
+      <!-- สตรีมกล้องหน้าสด -->
       <div class="camera-container">
         <video id="videoFeed" autoplay playsinline muted></video>
         <img id="capturedPhoto" alt="ภาพถ่ายยืนยัน">
@@ -224,7 +194,9 @@
       <button type="button" id="btnSnap" class="btn-cam" onclick="takeSnapshot()">📸 กดถ่ายรูปยืนยันตัวตน (กล้องหน้า)</button>
       <button type="button" id="btnRetake" class="btn-cam" style="display:none; background:#475569 !important;" onclick="retakePhoto()">🔄 ถ่ายรูปใหม่</button>
 
+      <!-- แสดงสถานะ GPS และสาขาอัตโนมัติ -->
       <div id="checkStatus" class="status-msg">⏳ กำลังค้นหาสาขาปลายทางจากพิกัด GPS...</div>
+
       <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันถึงจุดหมาย</button>
     </div>
   </div>
@@ -233,6 +205,7 @@
     const LIFF_ID = "2011720736-FTzsT0tU";
     const API_URL = "https://script.google.com/macros/s/AKfycbwF8JEzOZ07a_t69Fqx5vT9TrKb3cuWSFL0r8Lxf2Dol6J0V1D64irB9D0uFR2u2lCdMA/exec";
 
+    // รายการพิกัดสาขาทั้งหมด
     const BRANCHES = [
       { name: "DC020 - สาขาเชียงราย", lat: 19.805456, lng: 99.750431 },
       { name: "DC019 - สาขานครปฐม", lat: 14.023389, lng: 100.258996 },
@@ -261,7 +234,7 @@
     let nearestBranch = null;
     let curDistance = null;
     let videoStream = null;
-    let isSubmitting = false; // Flag ป้องกันแตะซ้ำใน 0 มิลลิวินาที
+    let isSubmitting = false; // ตัวแปรป้องกันแตะซ้ำ
 
     window.onload = function() {
       startFastGPS();
@@ -355,7 +328,6 @@
       canvas.height = Math.round(video.videoHeight * (320 / video.videoWidth));
       canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // บีบอัดรูปขนาดเล็กพิเศษ ~25-30KB เพื่อให้อัปโหลดไวในเสี้ยววินาที
       curPhoto = canvas.toDataURL('image/jpeg', 0.45);
       photo.src = curPhoto;
       photo.style.display = 'block';
@@ -446,20 +418,35 @@
       .catch(err => { alert("ส่งข้อมูลไม่สำเร็จ: " + err.message); btn.disabled = false; });
     }
 
-    // ฟังก์ชันบันทึกเวลาพร้อมระบบล็อกหน้าจอ 100%
+    // ฟังก์ชันบันทึกเวลา (ตัด Touch Screen ทันที + ซ่อนปุ่มทันที)
     function doAttendance() {
-      // 1. ดักทันทีใน 0 มิลลิวินาทีแรก ไม่ยอมให้คำสั่งซ้อนกันเด็ดขาด
       if (isSubmitting) return false;
       if (!nearestBranch) return alert("ยังไม่สามารถระบุพิกัดสาขาได้");
       if (!curPhoto) return alert("กรุณากดถ่ายรูปยืนยันตัวตนก่อน");
       if (curDistance > 500) return alert("อยู่นอกพื้นที่ ไม่สามารถบันทึกได้");
 
+      // ล็อกทันทีใน 0 มิลลิวินาที
       isSubmitting = true;
 
-      // 2. กางม่านสีดำล็อกหน้าจอทันที + ล็อกปุ่ม
-      document.getElementById('lockOverlay').style.display = "flex";
+      // 1. ปิดระบบสัมผัสทั้งหน้าจอ (กันแตะซ้ำ 100%)
+      document.body.style.pointerEvents = "none";
+
       const btn = document.getElementById('btnCheckSubmit');
-      btn.disabled = true;
+      const retakeBtn = document.getElementById('btnRetake');
+      const statusEl = document.getElementById('checkStatus');
+
+      // 2. ซ่อนปุ่มทิ้งทันที
+      btn.style.display = "none";
+      if (retakeBtn) retakeBtn.style.display = "none";
+
+      // 3. แสดงข้อความหมุนโหลดชัดเจน
+      statusEl.style.display = "block";
+      statusEl.innerHTML = `
+        <div style="padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid #38bdf8;">
+          <b style="color: #38bdf8; font-size: 16px;">⚡ กำลังบันทึกข้อมูล...</b><br>
+          <span style="font-size: 13px; color: #94a3b8;">ระบบกำลังอัปโหลดรูปและลงเวลา กรุณารอสักครู่ ห้ามปิดหน้าต่าง</span>
+        </div>
+      `;
 
       const empName = currentUser ? currentUser.empName : profile.displayName;
       const empId = currentUser ? currentUser.empId : "-";
@@ -468,7 +455,6 @@
       const dateStr = now.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-      // ดัก Timeout 20 วินาที
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 20000);
 
@@ -525,12 +511,16 @@
       })
       .catch(err => {
         clearTimeout(timeoutId);
-        // ปลดล็อกหน้าจอหากเกิดข้อผิดพลาด ให้คนขับสามารถลองใหม่ได้
+        // คืนค่าระบบสัมผัสและนำปุ่มกลับมาหากบันทึกล้มเหลว
         isSubmitting = false;
-        document.getElementById('lockOverlay').style.display = "none";
+        document.body.style.pointerEvents = "auto";
+        btn.style.display = "block";
         btn.disabled = false;
+        btn.innerHTML = `ยืนยันถึงจุดหมาย (ลองใหม่อีกครั้ง)`;
+        if (retakeBtn) retakeBtn.style.display = "block";
 
         const errDetail = err.name === 'AbortError' ? 'การเชื่อมต่อหมดเวลา (Timeout) กรุณากดใหม่อีกครั้ง' : err.message;
+        statusEl.innerHTML = `<span style="color:#f87171;">❌ บันทึกไม่สำเร็จ: ${errDetail}</span>`;
         alert("บันทึกไม่สำเร็จ: " + errDetail);
       });
     }
