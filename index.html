@@ -52,7 +52,7 @@
       object-fit: cover;
       background: #334155;
     }
-    input, select {
+    input {
       width: 100%;
       padding: 13px;
       margin-top: 10px;
@@ -63,7 +63,7 @@
       outline: none;
       font-size: 15px;
     }
-    input:focus, select:focus { border-color: #38bdf8; }
+    input:focus { border-color: #38bdf8; }
     button {
       width: 100%;
       padding: 14px;
@@ -110,7 +110,16 @@
       display: none;
       transform: scaleX(-1);
     }
-    .status-msg { margin-top: 12px; font-size: 13px; color: #94a3b8; line-height: 1.5; }
+    .status-msg {
+      margin-top: 14px;
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.6;
+      background: #0f172a;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+    }
     .badge {
       background: #0f172a;
       border: 1px solid #334155;
@@ -167,7 +176,7 @@
       <div class="notice-box" id="noticeBody"></div>
     </div>
 
-    <!-- ส่วนลงเวลาทำงาน (ถึงจุดหมาย) -->
+    <!-- ส่วนลงเวลาทำงาน (ถึงจุดหมายอัตโนมัติ) -->
     <div id="checkSec" style="display: none;">
       <div class="profile-header">
         <img id="checkLinePic" class="profile-img" src="" alt="Profile">
@@ -180,12 +189,7 @@
       <h3>🏁 เช็กอินถึงจุดหมาย</h3>
       <div class="badge" id="empBadge"></div>
 
-      <!-- รายการสาขา (เลือกให้อัตโนมัติตามพิกัดใกล้สุด) -->
-      <select id="destSelect" onchange="manualSelectBranch()">
-        <option value="">-- กำลังค้นหาสาขาที่ใกล้ที่สุดจาก GPS... --</option>
-      </select>
-
-      <!-- กล้องหน้าสด -->
+      <!-- สตรีมกล้องหน้าสด -->
       <div class="camera-container">
         <video id="videoFeed" autoplay playsinline muted></video>
         <img id="capturedPhoto" alt="ภาพถ่ายยืนยัน">
@@ -195,8 +199,10 @@
       <button type="button" id="btnSnap" class="btn-cam" onclick="takeSnapshot()">📸 กดถ่ายรูปยืนยันตัวตน (กล้องหน้า)</button>
       <button type="button" id="btnRetake" class="btn-cam" style="display:none; background:#475569 !important;" onclick="retakePhoto()">🔄 ถ่ายรูปใหม่</button>
 
+      <!-- กล่องแสดงสถานะ GPS และสาขาที่ตรวจพบอัตโนมัติ -->
+      <div id="checkStatus" class="status-msg">⏳ กำลังค้นหาสาขาปลายทางจากพิกัด GPS...</div>
+
       <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันถึงจุดหมาย</button>
-      <div id="checkStatus" class="status-msg">กำลังดึงพิกัด GPS...</div>
     </div>
   </div>
 
@@ -204,7 +210,7 @@
     const LIFF_ID = "2011720736-FTzsT0tU";
     const API_URL = "https://script.google.com/macros/s/AKfycbwF8JEzOZ07a_t69Fqx5vT9TrKb3cuWSFL0r8Lxf2Dol6J0V1D64irB9D0uFR2u2lCdMA/exec";
 
-    // ฐานข้อมูลพิกัด 16 สาขา + HQ
+    // ฐานข้อมูลพิกัด 16 สาขา + Head Office
     const BRANCHES = [
       { name: "DC020 - สาขาเชียงราย", lat: 19.805456, lng: 99.750431 },
       { name: "DC019 - สาขานครปฐม", lat: 14.023389, lng: 100.258996 },
@@ -226,15 +232,15 @@
     ];
 
     let profile = null;
-    let currentUser = null; // เก็บชื่อและรหัสพนักงาน
+    let currentUser = null;
     let curLat = null;
     let curLng = null;
     let curPhoto = null;
+    let nearestBranch = null;
     let curDistance = null;
     let videoStream = null;
 
     window.onload = function() {
-      renderBranchOptions();
       startFastGPS();
 
       if (typeof liff !== "undefined") {
@@ -253,18 +259,6 @@
       }
     };
 
-    function renderBranchOptions() {
-      const sel = document.getElementById('destSelect');
-      sel.innerHTML = '<option value="">-- เลือกสาขาปลายทาง --</option>';
-      BRANCHES.forEach((b, idx) => {
-        const opt = document.createElement('option');
-        opt.value = idx;
-        opt.innerText = b.name;
-        sel.appendChild(opt);
-      });
-    }
-
-    // คำนวณหาระยะทางแบบ Haversine Formula (เมตร)
     function calcDistanceMeters(lat1, lon1, lat2, lon2) {
       const R = 6371e3;
       const φ1 = lat1 * Math.PI / 180;
@@ -275,77 +269,69 @@
       return Math.round(R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))));
     }
 
-    // ค้นหาสาขาที่ใกล้ที่สุดอัตโนมัติจาก GPS
+    // คำนวณหาสาขาที่ใกล้ที่สุดอัตโนมัติ
     function autoDetectNearestBranch() {
       if (!curLat || !curLng) return;
 
-      let nearestIdx = 0;
       let minDistance = Infinity;
+      let closest = null;
 
-      BRANCHES.forEach((b, idx) => {
+      BRANCHES.forEach(b => {
         const d = calcDistanceMeters(curLat, curLng, b.lat, b.lng);
         if (d < minDistance) {
           minDistance = d;
-          nearestIdx = idx;
+          closest = b;
         }
       });
 
-      // เลือกสาขาที่ใกล้ที่สุดให้คนขับทันที
-      document.getElementById('destSelect').value = nearestIdx;
+      nearestBranch = closest;
       curDistance = minDistance;
 
-      updateStatusUI(BRANCHES[nearestIdx].name, minDistance);
-    }
-
-    function manualSelectBranch() {
-      const selIdx = document.getElementById('destSelect').value;
-      if (selIdx === "" || !curLat || !curLng) return;
-      const targetBranch = BRANCHES[Number(selIdx)];
-      curDistance = calcDistanceMeters(curLat, curLng, targetBranch.lat, targetBranch.lng);
-      updateStatusUI(targetBranch.name, curDistance);
-    }
-
-    function updateStatusUI(branchName, distance) {
       const statusEl = document.getElementById('checkStatus');
       const submitBtn = document.getElementById('btnCheckSubmit');
 
-      if (distance <= 500) {
-        statusEl.innerHTML = `📍 ตรวจพบสาขาที่ใกล้ที่สุด:<br><b>${branchName}</b> (ห่าง ${distance} ม.)<br><span style="color:#4ade80;">✅ อยู่ในรัศมีที่กำหนด (ไม่เกิน 500 ม.)</span>`;
+      if (curDistance <= 500) {
+        statusEl.innerHTML = `📍 จุดหมายปลายทาง: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance} เมตร</b><br><span style="color:#4ade80; font-weight:600;">✅ อยู่ในพื้นที่กำหนด (ไม่เกิน 500 ม.)</span>`;
         if (curPhoto) submitBtn.disabled = false;
         else submitBtn.disabled = true;
       } else {
-        statusEl.innerHTML = `📍 สาขาที่ใกล้ที่สุดคือ: <b>${branchName}</b><br><span style="color:#f87171;">❌ อยู่นอกพื้นที่เช็กอิน (ห่าง ${distance.toLocaleString()} ม. เกินเกณฑ์ 500 ม.)</span>`;
+        statusEl.innerHTML = `📍 สาขาที่ใกล้ที่สุด: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance.toLocaleString()} เมตร</b><br><span style="color:#f87171; font-weight:600;">❌ อยู่นอกพื้นที่เช็กอิน (ต้องไม่เกิน 500 ม.)</span>`;
         submitBtn.disabled = true;
       }
     }
 
     function startFastGPS() {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          pos => {
-            curLat = pos.coords.latitude;
-            curLng = pos.coords.longitude;
-            autoDetectNearestBranch();
-          },
-          () => {
-            document.getElementById('checkStatus').innerText = "⚠️ กรุณาเปิดสิทธิ์ GPS บนโทรศัพท์";
-            document.getElementById('checkStatus').style.color = "#f87171";
-          },
-          { enableHighAccuracy: false, timeout: 5000, maximumAge: 30000 }
-        );
+      if (!navigator.geolocation) {
+        document.getElementById('checkStatus').innerText = "⚠️ อุปกรณ์ไม่รองรับ GPS";
+        return;
+      }
 
-        navigator.geolocation.watchPosition(pos => {
+      const geoOptions = { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 };
+
+      navigator.geolocation.getCurrentPosition(
+        pos => {
           curLat = pos.coords.latitude;
           curLng = pos.coords.longitude;
           autoDetectNearestBranch();
-        }, null, { enableHighAccuracy: true, maximumAge: 10000 });
-      }
+        },
+        err => {
+          document.getElementById('checkStatus').innerText = "⚠️ กรุณาเปิด Location Service";
+          document.getElementById('checkStatus').style.color = "#f87171";
+        },
+        geoOptions
+      );
+
+      navigator.geolocation.watchPosition(pos => {
+        curLat = pos.coords.latitude;
+        curLng = pos.coords.longitude;
+        autoDetectNearestBranch();
+      }, null, geoOptions);
     }
 
     function startLiveCamera() {
       const video = document.getElementById('videoFeed');
       const constraints = {
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: "user", width: { ideal: 480 }, height: { ideal: 480 } },
         audio: false
       };
 
@@ -360,9 +346,7 @@
               videoStream = stream;
               video.srcObject = stream;
             })
-            .catch(e => {
-              alert("กรุณาอนุญาตให้เว็บเข้าถึงกล้องหน้า: " + e.message);
-            });
+            .catch(e => alert("กรุณาอนุญาตให้เว็บเข้าถึงกล้องหน้า: " + e.message));
         });
     }
 
@@ -376,12 +360,14 @@
         return;
       }
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const scale = 480 / video.videoWidth;
+      canvas.width = 480;
+      canvas.height = Math.round(video.videoHeight * scale);
+
       const ctx = canvas.getContext('2d');
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      curPhoto = canvas.toDataURL('image/jpeg', 0.7);
+      curPhoto = canvas.toDataURL('image/jpeg', 0.6);
       photo.src = curPhoto;
       photo.style.display = 'block';
       video.style.display = 'none';
@@ -414,7 +400,7 @@
         document.getElementById('loadingSec').style.display = 'none';
 
         if (res.exists) {
-          currentUser = res; // บันทึกชื่อและรหัสพนักงานไว้ใช้งาน
+          currentUser = res;
           if (res.status === "อนุมัติ") {
             document.getElementById('checkLinePic').src = profile.pictureUrl || "https://placehold.co/48x48?text=LINE";
             document.getElementById('checkLineName').innerText = profile.displayName;
@@ -489,12 +475,10 @@
     }
 
     function doAttendance() {
-      const selIdx = document.getElementById('destSelect').value;
-      if (selIdx === "") return alert("ไม่พบข้อมูลสาขาปลายทาง");
+      if (!nearestBranch) return alert("ยังไม่สามารถระบุพิกัดสาขาได้");
       if (!curPhoto) return alert("กรุณากดถ่ายรูปยืนยันตัวตนก่อน");
       if (curDistance > 500) return alert("อยู่นอกพื้นที่ ไม่สามารถบันทึกได้");
 
-      const targetBranch = BRANCHES[Number(selIdx)];
       const empName = currentUser ? currentUser.empName : profile.displayName;
       const empId = currentUser ? currentUser.empId : "-";
 
@@ -514,7 +498,7 @@
         body: JSON.stringify({
           action: "recordAttendance",
           lineUserId: profile.userId,
-          locationName: targetBranch.name,
+          locationName: nearestBranch.name,
           distance: curDistance,
           lat: curLat,
           lng: curLng,
@@ -524,11 +508,10 @@
       .then(res => res.json())
       .then(res => {
         if (res.success) {
-          // ข้อความสรุปส่งเข้าแชต LINE ระบุชื่อพนักงานชัดเจน
           const msgText = `✅ บันทึกเช็กอินถึงจุดหมายสำเร็จ\n` +
                           `──────────────────\n` +
                           `👤 พนักงาน: ${empName} (รหัส: ${empId})\n` +
-                          `🏁 ปลายทาง: ${targetBranch.name}\n` +
+                          `🏁 ปลายทาง: ${nearestBranch.name}\n` +
                           `📅 วันที่: ${dateStr}\n` +
                           `⏰ เวลา: ${timeStr} น.\n` +
                           `📏 ระยะห่าง: ${curDistance} เมตร\n` +
@@ -541,16 +524,16 @@
               type: 'text',
               text: msgText
             }]).then(() => {
-              alert(`เช็กอินสำเร็จ: ${empName}\nสาขา: ${targetBranch.name} (${curDistance} ม.)`);
+              alert(`เช็กอินสำเร็จ: ${empName}\nสาขา: ${nearestBranch.name} (${curDistance} ม.)`);
               if (videoStream) videoStream.getTracks().forEach(track => track.stop());
               liff.closeWindow();
             }).catch(err => {
-              alert(`เช็กอินสำเร็จ: ${empName}\nสาขา: ${targetBranch.name} (${curDistance} ม.)`);
+              alert(`เช็กอินสำเร็จ: ${empName}\nสาขา: ${nearestBranch.name} (${curDistance} ม.)`);
               if (videoStream) videoStream.getTracks().forEach(track => track.stop());
               liff.closeWindow();
             });
           } else {
-            alert(`เช็กอินสำเร็จ: ${empName}\nสาขา: ${targetBranch.name} (${curDistance} ม.)`);
+            alert(`เช็กอินสำเร็จ: ${empName}\nสาขา: ${nearestBranch.name} (${curDistance} ม.)`);
             liff.closeWindow();
           }
         } else {
