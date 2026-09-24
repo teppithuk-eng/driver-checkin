@@ -8,13 +8,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ระบบลงเวลาคนขับรถส่งของ</title>
 
-  <!-- Script บังคับสลัด Cache ของแอป LINE ทันที -->
+  <!-- สคริปต์สลัดแคชแบบเด็ดขาด -->
   <script>
-    const APP_BUILD_VER = "20260924_06";
-    const curUrl = new URL(window.location.href);
-    if (curUrl.searchParams.get("build") !== APP_BUILD_VER) {
-      curUrl.searchParams.set("build", APP_BUILD_VER);
-      window.location.replace(curUrl.toString());
+    const BUILD_VERSION = "20260924_v10";
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("bv") !== BUILD_VERSION) {
+      urlParams.set("bv", BUILD_VERSION);
+      window.location.search = urlParams.toString();
     }
   </script>
 
@@ -168,7 +168,7 @@
       <div class="notice-box" id="noticeBody"></div>
     </div>
 
-    <!-- ส่วนลงเวลาทำงาน (สแกนหน้า + ออโต้พิกัด) -->
+    <!-- ส่วนลงเวลาทำงาน (ตรวจจับอัตโนมัติ ไม่มี Dropdown) -->
     <div id="checkSec" style="display: none;">
       <div class="profile-header">
         <img id="checkLinePic" class="profile-img" src="" alt="Profile">
@@ -181,6 +181,7 @@
       <h3>🏁 เช็กอินถึงจุดหมาย</h3>
       <div class="badge" id="empBadge"></div>
 
+      <!-- สตรีมกล้องหน้า -->
       <div class="camera-container">
         <video id="videoFeed" autoplay playsinline muted></video>
         <img id="capturedPhoto" alt="ภาพถ่ายยืนยัน">
@@ -190,7 +191,9 @@
       <button type="button" id="btnSnap" class="btn-cam" onclick="takeSnapshot()">📸 กดถ่ายรูปยืนยันตัวตน (กล้องหน้า)</button>
       <button type="button" id="btnRetake" class="btn-cam" style="display:none; background:#475569 !important;" onclick="retakePhoto()">🔄 ถ่ายรูปใหม่</button>
 
-      <div id="checkStatus" class="status-msg">⏳ กำลังค้นหาสาขาปลายทางจากพิกัด GPS...</div>
+      <!-- กล่องสถานะสาขาอัตโนมัติ -->
+      <div id="checkStatus" class="status-msg">⏳ กำลังคำนวณหาสาขาที่ใกล้ที่สุดจาก GPS...</div>
+
       <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันถึงจุดหมาย</button>
     </div>
   </div>
@@ -254,8 +257,10 @@
       return Math.round(R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))));
     }
 
+    // คำนวณหาสาขาที่ใกล้ตำแหน่งจริงที่สุด
     function autoDetectNearestBranch() {
       if (!curLat || !curLng) return;
+
       let minDistance = Infinity;
       let closest = null;
 
@@ -274,11 +279,11 @@
       const submitBtn = document.getElementById('btnCheckSubmit');
 
       if (curDistance <= 500) {
-        statusEl.innerHTML = `📍 จุดหมายปลายทาง: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance} เมตร</b><br><span style="color:#4ade80; font-weight:600;">✅ อยู่ในพื้นที่กำหนด (ไม่เกิน 500 ม.)</span>`;
+        statusEl.innerHTML = `📍 ตรวจพบจุดหมาย: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance} เมตร</b><br><span style="color:#4ade80; font-weight:bold;">✅ อยู่ในรัศมีที่กำหนด (ไม่เกิน 500 ม.)</span>`;
         if (curPhoto) submitBtn.disabled = false;
         else submitBtn.disabled = true;
       } else {
-        statusEl.innerHTML = `📍 สาขาที่ใกล้ที่สุด: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance.toLocaleString()} เมตร</b><br><span style="color:#f87171; font-weight:600;">❌ อยู่นอกพื้นที่เช็กอิน (ต้องไม่เกิน 500 ม.)</span>`;
+        statusEl.innerHTML = `📍 สาขาที่ใกล้ที่สุด: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance.toLocaleString()} เมตร</b><br><span style="color:#f87171; font-weight:bold;">❌ อยู่นอกพื้นที่เช็กอิน (ต้องไม่เกิน 500 ม.)</span>`;
         submitBtn.disabled = true;
       }
     }
@@ -303,7 +308,7 @@
       const video = document.getElementById('videoFeed');
       navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 400 }, height: { ideal: 400 } }, audio: false })
         .then(stream => { videoStream = stream; video.srcObject = stream; })
-        .catch(err => {
+        .catch(() => {
           navigator.mediaDevices.getUserMedia({ video: true, audio: false })
             .then(stream => { videoStream = stream; video.srcObject = stream; })
             .catch(e => alert("กรุณาอนุญาตให้ใช้งานกล้องหน้า: " + e.message));
@@ -321,7 +326,6 @@
       canvas.height = Math.round(video.videoHeight * (360 / video.videoWidth));
       canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // บีบอัดรูปขนาดเล็กพิเศษ (ส่งเร็วขึ้นทันที)
       curPhoto = canvas.toDataURL('image/jpeg', 0.5);
       photo.src = curPhoto;
       photo.style.display = 'block';
