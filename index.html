@@ -8,9 +8,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ระบบลงเวลาคนขับรถส่งของ</title>
 
-  <!-- สคริปต์บังคับล้างแคชใน LINE In-App Browser ทันที -->
+  <!-- Force Cache Breaker -->
   <script>
-    const BUILD_VERSION = "20260924_v15_fast";
+    const BUILD_VERSION = "20260924_v20_fastlock";
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("bv") !== BUILD_VERSION) {
       urlParams.set("bv", BUILD_VERSION);
@@ -20,7 +20,7 @@
 
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
-    * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, BlinkMacSystemFont, sans-serif; }
+    * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; }
     body {
       background: #0f172a;
       color: #e2e8f0;
@@ -40,6 +40,7 @@
       width: 100%;
       text-align: center;
       box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      position: relative;
     }
     h3 { color: #38bdf8; margin-top: 0; margin-bottom: 8px; }
     p { color: #94a3b8; font-size: 14px; margin-bottom: 16px; }
@@ -86,7 +87,7 @@
       color: #fff;
       display: block;
       box-sizing: border-box;
-      transition: all 0.2s ease;
+      touch-action: manipulation;
     }
     .btn-cam { background: #0284c7 !important; margin-top: 12px; }
     button:disabled { background: #334155 !important; color: #64748b !important; cursor: not-allowed; }
@@ -135,9 +136,41 @@
       font-size: 14px;
       line-height: 1.6;
     }
+
+    /* ฉากกั้นล็อกจอ 100% ระหว่างกำลังบันทึก ป้องกันการแตะซ้ำ */
+    #lockOverlay {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 99999;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 5px solid #334155;
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body>
+
+  <!-- จอกั้นล็อกการกดซ้ำ -->
+  <div id="lockOverlay">
+    <div class="spinner"></div>
+    <div style="color: #38bdf8; font-size: 16px; font-weight: bold;">⚡ กำลังบันทึกข้อมูล...</div>
+    <div style="color: #94a3b8; font-size: 13px; margin-top: 6px;">กรุณารอสักครู่ ห้ามปิดหน้าต่าง</div>
+  </div>
 
   <div class="card">
     <div id="loadingSec">
@@ -169,7 +202,7 @@
       <div class="notice-box" id="noticeBody"></div>
     </div>
 
-    <!-- ส่วนลงเวลาทำงาน (สแกนหน้า + ออโต้พิกัด) -->
+    <!-- ส่วนลงเวลาทำงาน -->
     <div id="checkSec" style="display: none;">
       <div class="profile-header">
         <img id="checkLinePic" class="profile-img" src="" alt="Profile">
@@ -182,7 +215,6 @@
       <h3>🏁 เช็กอินถึงจุดหมาย</h3>
       <div class="badge" id="empBadge"></div>
 
-      <!-- สตรีมกล้องหน้าสด -->
       <div class="camera-container">
         <video id="videoFeed" autoplay playsinline muted></video>
         <img id="capturedPhoto" alt="ภาพถ่ายยืนยัน">
@@ -192,9 +224,7 @@
       <button type="button" id="btnSnap" class="btn-cam" onclick="takeSnapshot()">📸 กดถ่ายรูปยืนยันตัวตน (กล้องหน้า)</button>
       <button type="button" id="btnRetake" class="btn-cam" style="display:none; background:#475569 !important;" onclick="retakePhoto()">🔄 ถ่ายรูปใหม่</button>
 
-      <!-- กล่องแสดงสถานะสาขาและ GPS อัตโนมัติ -->
       <div id="checkStatus" class="status-msg">⏳ กำลังค้นหาสาขาปลายทางจากพิกัด GPS...</div>
-
       <button type="button" id="btnCheckSubmit" onclick="doAttendance()" disabled>ยืนยันถึงจุดหมาย</button>
     </div>
   </div>
@@ -203,7 +233,6 @@
     const LIFF_ID = "2011720736-FTzsT0tU";
     const API_URL = "https://script.google.com/macros/s/AKfycbwF8JEzOZ07a_t69Fqx5vT9TrKb3cuWSFL0r8Lxf2Dol6J0V1D64irB9D0uFR2u2lCdMA/exec";
 
-    // ฐานข้อมูลพิกัด 16 สาขา + Head Office
     const BRANCHES = [
       { name: "DC020 - สาขาเชียงราย", lat: 19.805456, lng: 99.750431 },
       { name: "DC019 - สาขานครปฐม", lat: 14.023389, lng: 100.258996 },
@@ -232,6 +261,7 @@
     let nearestBranch = null;
     let curDistance = null;
     let videoStream = null;
+    let isSubmitting = false; // Flag ป้องกันแตะซ้ำใน 0 มิลลิวินาที
 
     window.onload = function() {
       startFastGPS();
@@ -280,8 +310,7 @@
 
       if (curDistance <= 500) {
         statusEl.innerHTML = `📍 ตรวจพบสาขาปลายทาง: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance} เมตร</b><br><span style="color:#4ade80; font-weight:bold;">✅ อยู่ในรัศมีที่กำหนด (ไม่เกิน 500 ม.)</span>`;
-        if (curPhoto) submitBtn.disabled = false;
-        else submitBtn.disabled = true;
+        if (curPhoto && !isSubmitting) submitBtn.disabled = false;
       } else {
         statusEl.innerHTML = `📍 สาขาที่ใกล้ที่สุด: <b>${nearestBranch.name}</b><br>📏 ระยะห่าง: <b>${curDistance.toLocaleString()} เมตร</b><br><span style="color:#f87171; font-weight:bold;">❌ อยู่นอกพื้นที่เช็กอิน (ต้องไม่เกิน 500 ม.)</span>`;
         submitBtn.disabled = true;
@@ -306,7 +335,7 @@
 
     function startLiveCamera() {
       const video = document.getElementById('videoFeed');
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 400 }, height: { ideal: 400 } }, audio: false })
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 360 }, height: { ideal: 360 } }, audio: false })
         .then(stream => { videoStream = stream; video.srcObject = stream; })
         .catch(() => {
           navigator.mediaDevices.getUserMedia({ video: true, audio: false })
@@ -322,12 +351,12 @@
 
       if (!video.videoWidth) return alert("กรุณารอกล้องสักครู่");
 
-      canvas.width = 360;
-      canvas.height = Math.round(video.videoHeight * (360 / video.videoWidth));
+      canvas.width = 320;
+      canvas.height = Math.round(video.videoHeight * (320 / video.videoWidth));
       canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // บีบอัดรูปขนาดเล็กพิเศษ ~35KB ส่งข้อมูลเร็วขึ้นทันที
-      curPhoto = canvas.toDataURL('image/jpeg', 0.5);
+      // บีบอัดรูปขนาดเล็กพิเศษ ~25-30KB เพื่อให้อัปโหลดไวในเสี้ยววินาที
+      curPhoto = canvas.toDataURL('image/jpeg', 0.45);
       photo.src = curPhoto;
       photo.style.display = 'block';
       video.style.display = 'none';
@@ -335,7 +364,7 @@
       document.getElementById('btnSnap').style.display = 'none';
       document.getElementById('btnRetake').style.display = 'block';
 
-      if (curDistance !== null && curDistance <= 500) {
+      if (curDistance !== null && curDistance <= 500 && !isSubmitting) {
         document.getElementById('btnCheckSubmit').disabled = false;
       }
     }
@@ -417,22 +446,20 @@
       .catch(err => { alert("ส่งข้อมูลไม่สำเร็จ: " + err.message); btn.disabled = false; });
     }
 
-    // ฟังก์ชันบันทึกพร้อมระบบ Loading และป้องกันกดซ้ำ
+    // ฟังก์ชันบันทึกเวลาพร้อมระบบล็อกหน้าจอ 100%
     function doAttendance() {
+      // 1. ดักทันทีใน 0 มิลลิวินาทีแรก ไม่ยอมให้คำสั่งซ้อนกันเด็ดขาด
+      if (isSubmitting) return false;
       if (!nearestBranch) return alert("ยังไม่สามารถระบุพิกัดสาขาได้");
       if (!curPhoto) return alert("กรุณากดถ่ายรูปยืนยันตัวตนก่อน");
       if (curDistance > 500) return alert("อยู่นอกพื้นที่ ไม่สามารถบันทึกได้");
 
-      const btn = document.getElementById('btnCheckSubmit');
-      const retakeBtn = document.getElementById('btnRetake');
-      const statusEl = document.getElementById('checkStatus');
+      isSubmitting = true;
 
-      // ล็อกปุ่มทันทีในระดับ Millisecond และขึ้น Loading
+      // 2. กางม่านสีดำล็อกหน้าจอทันที + ล็อกปุ่ม
+      document.getElementById('lockOverlay').style.display = "flex";
+      const btn = document.getElementById('btnCheckSubmit');
       btn.disabled = true;
-      btn.innerHTML = `⏳ กำลังบันทึกข้อมูล กรุณารอสักครู่...`;
-      btn.style.opacity = "0.7";
-      if (retakeBtn) retakeBtn.style.display = "none";
-      statusEl.innerHTML = `<span style="color:#38bdf8;">🔄 กำลังอัปโหลดภาพและลงเวลาเข้าระบบ ห้ามปิดหน้าต่าง...</span>`;
 
       const empName = currentUser ? currentUser.empName : profile.displayName;
       const empId = currentUser ? currentUser.empId : "-";
@@ -441,9 +468,9 @@
       const dateStr = now.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-      // ดัก Timeout 25 วินาทีป้องกันเน็ตค้าง
+      // ดัก Timeout 20 วินาที
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
       fetch(API_URL, {
         method: "POST",
@@ -454,6 +481,8 @@
         body: JSON.stringify({
           action: "recordAttendance",
           lineUserId: profile.userId,
+          empId: empId,
+          empName: empName,
           locationName: nearestBranch.name,
           distance: curDistance,
           lat: curLat,
@@ -465,9 +494,6 @@
       .then(res => {
         clearTimeout(timeoutId);
         if (res.success) {
-          btn.innerHTML = `✅ บันทึกสำเร็จเรียบร้อย`;
-          btn.style.background = "#16a34a";
-
           const msgText = `✅ บันทึกเช็กอินถึงจุดหมายสำเร็จ\n` +
                           `──────────────────\n` +
                           `👤 พนักงาน: ${empName} (รหัส: ${empId})\n` +
@@ -499,14 +525,12 @@
       })
       .catch(err => {
         clearTimeout(timeoutId);
-        // คืนค่าปุ่มให้กลับมากดใหม่ได้หากล้มเหลว
+        // ปลดล็อกหน้าจอหากเกิดข้อผิดพลาด ให้คนขับสามารถลองใหม่ได้
+        isSubmitting = false;
+        document.getElementById('lockOverlay').style.display = "none";
         btn.disabled = false;
-        btn.innerHTML = `ยืนยันถึงจุดหมาย (ลองอีกครั้ง)`;
-        btn.style.opacity = "1";
-        if (retakeBtn) retakeBtn.style.display = "block";
 
         const errDetail = err.name === 'AbortError' ? 'การเชื่อมต่อหมดเวลา (Timeout) กรุณากดใหม่อีกครั้ง' : err.message;
-        statusEl.innerHTML = `<span style="color:#f87171;">❌ บันทึกไม่สำเร็จ: ${errDetail}</span>`;
         alert("บันทึกไม่สำเร็จ: " + errDetail);
       });
     }
