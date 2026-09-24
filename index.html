@@ -2,9 +2,11 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>ระบบลงเวลาคนขับรถส่งของ</title>
-  <!-- LINE LIFF SDK -->
+  <title>ระบบลงเวลาคนขับรถส่งของ (v2.0)</title>
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     * { box-sizing: border-box; font-family: 'Sukhumvit Set', -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -133,7 +135,7 @@
 
   <div class="card">
     <div id="loadingSec">
-      <h3>🚚 ระบบขนส่งพัสดุ</h3>
+      <h3>🚚 ระบบขนส่งพัสดุ (v2.0)</h3>
       <p id="initStatusText">กำลังเชื่อมต่อ LINE ID...</p>
     </div>
 
@@ -182,7 +184,7 @@
         <option value="">-- กรุณาเลือกสาขาปลายทาง --</option>
       </select>
 
-      <!-- กล้องหน้าสด -->
+      <!-- กล้องหน้าสด (ห้ามอัปโหลดจากคลัง) -->
       <div class="camera-container">
         <video id="videoFeed" autoplay playsinline muted></video>
         <img id="capturedPhoto" alt="ภาพถ่ายยืนยัน">
@@ -201,7 +203,6 @@
     const LIFF_ID = "2011720736-FTzsT0tU";
     const API_URL = "https://script.google.com/macros/s/AKfycbwF8JEzOZ07a_t69Fqx5vT9TrKb3cuWSFL0r8Lxf2Dol6J0V1D64irB9D0uFR2u2lCdMA/exec";
 
-    // รายการพิกัดสาขาทั้งหมด
     const BRANCHES = [
       { name: "DC020 - สาขาเชียงราย", lat: 19.805456, lng: 99.750431 },
       { name: "DC019 - สาขานครปฐม", lat: 14.023389, lng: 100.258996 },
@@ -259,7 +260,7 @@
     function startLiveCamera() {
       const video = document.getElementById('videoFeed');
       const constraints = {
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: { ideal: "user" }, width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false
       };
 
